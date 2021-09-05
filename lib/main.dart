@@ -45,7 +45,7 @@ class _MyHomePageState extends State<MyHomePage> {
     super.initState();
 
     initialize();
-    getUserMedia();
+    connect();
   }
 
   @override
@@ -76,7 +76,7 @@ class _MyHomePageState extends State<MyHomePage> {
       "optional": [],
     };
 
-    await getUserMedia();
+    localStream = await getUserMedia();
 
     //create peer connection
     RTCPeerConnection peerConnection = await createPeerConnection(
@@ -95,7 +95,7 @@ class _MyHomePageState extends State<MyHomePage> {
             {
               'candidate': ice.candidate.toString(),
               'sdpMid': ice.sdpMid.toString(),
-              'sdpMlineIndex': ice.sdpMlineIndex.toString(),
+              'sdpMlineIndex': ice.sdpMlineIndex,
             },
           ),
         );
@@ -118,8 +118,8 @@ class _MyHomePageState extends State<MyHomePage> {
     RTCSessionDescription sessionDescription =
         await _peerConnection.createOffer(
       {
-        'offerToRecieveVideo': 1,
-        'offerToRecieveAudio': 1,
+        'offerToRecieveVideo': true,
+        'offerToRecieveAudio': true,
       },
     );
 
@@ -134,6 +134,36 @@ class _MyHomePageState extends State<MyHomePage> {
     await _peerConnection.setLocalDescription(sessionDescription);
   }
 
+  Future<void> setRemoteDesc() async {
+    String jsonString = sdpController.text;
+    final session = await jsonDecode("$jsonString");
+
+    final sdp = write(session, null);
+    RTCSessionDescription desc = RTCSessionDescription(
+      sdp,
+      isOffer ? "answer" : "offer",
+    );
+
+    print(desc.toMap());
+
+    await _peerConnection.setRemoteDescription(desc);
+  }
+
+  Future<void> createAnswer() async {
+    RTCSessionDescription desc = await _peerConnection.createAnswer(
+      {
+        'offerToRecieveVideo': true,
+        'offerToRecieveAudio': true,
+      },
+    );
+
+    final session = parse(desc.sdp!);
+
+    print(json.encode(session));
+
+    _peerConnection.setLocalDescription(desc);
+  }
+
   ///Initialize local and remote renderers
   Future<void> initialize() async {
     await localRenderer.initialize();
@@ -142,14 +172,29 @@ class _MyHomePageState extends State<MyHomePage> {
 
   ///Requests permission to use user media
   ///and adds stream to local renderer
-  Future<void> getUserMedia() async {
+  Future<MediaStream> getUserMedia() async {
     final stream = await navigator.mediaDevices.getUserMedia(
       {
-        "audio": false,
+        "audio": true,
         "video": {"facingMode": "user"},
       },
     );
     localRenderer.srcObject = stream;
+    return stream;
+  }
+
+  Future<void> setCandidate() async {
+    String jsonString = sdpController.text;
+    final session = await jsonDecode('$jsonString');
+
+    print(session['candidate']);
+    final candidate = RTCIceCandidate(
+      session['candidate'],
+      session['sdpMid'],
+      session['sdpMlineIndex'],
+    );
+
+    await _peerConnection.addCandidate(candidate);
   }
 
   @override
@@ -175,11 +220,11 @@ class _MyHomePageState extends State<MyHomePage> {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           ElevatedButton(
-            onPressed: () {},
+            onPressed: setRemoteDesc,
             child: Text("Set remote description"),
           ),
           ElevatedButton(
-            onPressed: () {},
+            onPressed: setCandidate,
             child: Text("Set candidate"),
           ),
         ],
@@ -199,11 +244,11 @@ class _MyHomePageState extends State<MyHomePage> {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           ElevatedButton(
-            onPressed: () {},
+            onPressed: createOffer,
             child: Text("Create Offer"),
           ),
           ElevatedButton(
-            onPressed: () {},
+            onPressed: createAnswer,
             child: Text("Create Answer"),
           ),
         ],
